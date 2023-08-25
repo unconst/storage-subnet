@@ -27,8 +27,11 @@ import argparse
 import traceback
 import bittensor as bt
 
+# Custom modules
+import shelve
+              
 # import this repo
-import template
+import storage
 
 def get_config():
     # Step 2: Set up the configuration parser
@@ -36,7 +39,7 @@ def get_config():
     # Using command-line arguments allows users to customize various miner settings.
     parser = argparse.ArgumentParser()
     # TODO(developer): Adds your custom miner arguments to the parser.
-    parser.add_argument('--custom', default='my_custom_value', help='Adds a custom value to the parser.')
+    parser.add_argument('--miner_db', default='~/miner_db', help='Miner DB location')
     # Adds override arguments for network and netuid.
     parser.add_argument( '--netuid', type = int, default = 1, help = "The chain subnet uid." )
     # Adds subtensor specific arguments i.e. --subtensor.chain_endpoint ... --subtensor.network ...
@@ -101,10 +104,13 @@ def main( config ):
         my_subnet_uid = metagraph.hotkeys.index(wallet.hotkey.ss58_address)
         bt.logging.info(f"Running miner on uid: {my_subnet_uid}")
 
+    # Build my shelve DB
+    DB = shelve.open(os.path.expanduser( config.miner_db) )  
+
     # Step 4: Set up miner functionalities
     # The following functions control the miner's response to incoming requests.
     # The blacklist function decides if a request should be ignored.
-    def blacklist_fn( synapse: template.protocol.Dummy ) -> bool:
+    def blacklist_fn( synapse: storage.protocol.Dummy ) -> bool:
         # TODO(developer): Define how miners should blacklist requests. This Function 
         # Runs before the synapse data has been deserialized (i.e. before synapse.data is available).
         # The synapse is instead contructed via the headers of the request. It is important to blacklist
@@ -124,7 +130,7 @@ def main( config ):
 
     # The priority function determines the order in which requests are handled.
     # More valuable or higher-priority requests are processed before others.
-    def priority_fn( synapse: template.protocol.Dummy ) -> float:
+    def priority_fn( synapse: storage.protocol.Dummy ) -> float:
         # TODO(developer): Define how miners should prioritize requests.
         # Miners may recieve messages from multiple entities at once. This function
         # determines which request should be processed first. Higher values indicate
@@ -137,13 +143,23 @@ def main( config ):
         return prirority
 
     # This is the core miner function, which decides the miner's response to a valid, high-priority request.
-    def dummy( synapse: template.protocol.Dummy ) -> template.protocol.Dummy:
+    def store( synapse: storage.protocol.Store) -> storage.protocol.Store:
         # TODO(developer): Define how miners should process requests.
         # This function runs after the synapse has been deserialized (i.e. after synapse.data is available).
         # This function runs after the blacklist and priority functions have been called.
         # Below: simple template logic: return the input value multiplied by 2.
         # If you change this, your miner will lose emission in the network incentive landscape.
-        synapse.dummy_output = synapse.dummy_input * 2
+        DB[ synapse.key ] = synapse.data
+        return synapse
+    
+    # This is the core miner function, which decides the miner's response to a valid, high-priority request.
+    def retrieve( synapse: storage.protocol.Retrieve ) -> storage.protocol.Retrieve:
+        # TODO(developer): Define how miners should process requests.
+        # This function runs after the synapse has been deserialized (i.e. after synapse.data is available).
+        # This function runs after the blacklist and priority functions have been called.
+        # Below: simple template logic: return the input value multiplied by 2.
+        # If you change this, your miner will lose emission in the network incentive landscape.
+        synapse.data = DB[ synapse.key ]
         return synapse
 
     # Step 5: Build and link miner functions to the axon.
@@ -154,7 +170,11 @@ def main( config ):
     # Attach determiners which functions are called when servicing a request.
     bt.logging.info(f"Attaching forward function to axon.")
     axon.attach(
-        forward_fn = dummy,
+        forward_fn = store,
+        blacklist_fn = blacklist_fn,
+        priority_fn = priority_fn,
+    ).attach(
+        forward_fn = retrieve,
         blacklist_fn = blacklist_fn,
         priority_fn = priority_fn,
     )
@@ -193,6 +213,7 @@ def main( config ):
         # If someone intentionally stops the miner, it'll safely terminate operations.
         except KeyboardInterrupt:
             axon.stop()
+            DB.close()
             bt.logging.success('Miner killed by keyboard interrupt.')
             break
         # In case of unforeseen errors, the miner will log the error and continue operations.

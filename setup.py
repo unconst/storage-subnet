@@ -58,12 +58,12 @@ with codecs.open(os.path.join(here, 'template/__init__.py'), encoding='utf-8') a
     version_string = version_match.group(1)
 
 setup(
-    name='bittensor_subnet_template', # TODO(developer): Change this value to your module subnet name.
+    name='storage-subnet', # TODO(developer): Change this value to your module subnet name.
     version=version_string,    
-    description='bittensor_subnet_template', # TODO(developer): Change this value to your module subnet description.
+    description='storage-subnet', # TODO(developer): Change this value to your module subnet description.
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/opentensor/bittensor-subnet-template', # TODO(developer): Change this url to your module subnet github url.
+    url='https://github.com/unconst/storage-subnet', # TODO(developer): Change this url to your module subnet github url.
     author='bittensor.com', # TODO(developer): Change this value to your module subnet author name.
     packages=find_packages(),
     include_package_data=True,
