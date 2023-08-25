@@ -30,7 +30,9 @@ import traceback
 import bittensor as bt
 
 # Custom modules
+import string
 import shelve
+import hashlib
 
 # import this repo
 import storage
@@ -119,26 +121,32 @@ def main( config ):
     # Step 7: The Main Validation Loop
     bt.logging.info("Starting validator loop.")
     step = 0
+    next_key = 0;
     while True:
         try:
 
-            # Pick a random item to store in the network.
-            all_keys = list(DB.keys())
-            data_key = all_keys[random.randint(0, len(all_keys) - 1)]
-            data_value = DB[data_key]
+            # Generate a random data and store its hash locally and data remotely.
+            random_key = ''.join(random.choice(string.ascii_letters) for _ in range(32))
+            random_data = ''.join(random.choice(string.ascii_letters) for _ in range(1024))
+            DB[random_key] = hashlib.sha256(random_data.encode()).digest()
             dendrite.query(
                 # Send the query to all axons in the network.
                 metagraph.axons,
                 # Construct a dummy query.
-                storage.protocol.Store( key = data_key, data = data_value ), # Construct a dummy query.
+                storage.protocol.Store( key = random_key, data = random_data ), # Construct a dummy query.
                 # All responses have the deserialize function called on them before returning.
                 deserialize = True, 
             )
+
+            # Pick a random key from the database.
+            all_keys = list(DB.keys())
+            validation_key = all_keys[random.randint(0, len(all_keys) - 1)]
+            validation_data_hash = DB[validation_key]
             retrieve_responses = dendrite.query(
                 # Send the query to all axons in the network.
                 metagraph.axons,
                 # Construct a dummy query.
-                storage.protocol.Retrieve( key = data_key ), # Construct a dummy query.
+                storage.protocol.Retrieve( key = validation_key ), # Construct a dummy query.
                 # All responses have the deserialize function called on them before returning.
                 deserialize = True, 
             )
@@ -152,9 +160,12 @@ def main( config ):
                 # Initialize the score for the current miner's response.
                 score = 0
 
+                # Get the hash of the returned data and check it against the known hash.
+                resp_hash = hashlib.sha256(resp_i.encode()).hexdigest()
+
                 # Check if the miner has provided the correct response by doubling the dummy input.
                 # If correct, set their score for this round to 1.
-                if resp_i == data_value:
+                if resp_hash == validation_data_hash:
                     score = 1
 
                 # Update the global score of the miner.
