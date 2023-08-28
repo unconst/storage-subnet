@@ -1,4 +1,4 @@
 git+https://github.com/opentensor/bittensor.git@revolution
+git+https://github.com/AYMENJD/rocksdb-python
 torch
 fastapi
-rockdb
