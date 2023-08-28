@@ -34,8 +34,10 @@ import storage
 # Get config.
 def get_config():
     parser = argparse.ArgumentParser()
+    parser.add_argument( '--netuid', type = int, default = 1, help = "The chain subnet uid." )
     bt.logging.add_args(parser)
     bt.wallet.add_args(parser)
+    bt.subtensor.add_args(parser)
     config =  bt.config(parser)
     return config
 

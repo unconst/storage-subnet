@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# Rust stuff.
+generate_db/target/*
+generate_db/Cargo.lock
+
 # Distribution / packaging
 .Python
 build/

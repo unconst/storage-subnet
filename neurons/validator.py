@@ -30,9 +30,7 @@ import traceback
 import bittensor as bt
 
 # Custom modules
-import string
-import shelve
-import hashlib
+import rocksdb
 
 # import this repo
 import storage
@@ -101,7 +99,7 @@ def main( config ):
     bt.logging.info(f"Metagraph: {metagraph}")
 
     # Build my shelve DB
-    DB = shelve.open(os.path.expanduser( config.validator_db) )  
+    hashes_db = rocksdb.DB(hashes_path, rocksdb.Options(create_if_missing=True))
 
     # Step 5: Connect the validator to the network
     if wallet.hotkey.ss58_address not in metagraph.hotkeys:
@@ -121,27 +119,13 @@ def main( config ):
     # Step 7: The Main Validation Loop
     bt.logging.info("Starting validator loop.")
     step = 0
-    next_key = 0;
+    next_key = 0
     while True:
         try:
 
-            # Generate a random data and store its hash locally and data remotely.
-            random_key = ''.join(random.choice(string.ascii_letters) for _ in range(32))
-            random_data = ''.join(random.choice(string.ascii_letters) for _ in range(1024))
-            DB[random_key] = hashlib.sha256(random_data.encode()).digest()
-            dendrite.query(
-                # Send the query to all axons in the network.
-                metagraph.axons,
-                # Construct a dummy query.
-                storage.protocol.Store( key = random_key, data = random_data ), # Construct a dummy query.
-                # All responses have the deserialize function called on them before returning.
-                deserialize = True, 
-            )
-
-            # Pick a random key from the database.
-            all_keys = list(DB.keys())
-            validation_key = all_keys[random.randint(0, len(all_keys) - 1)]
-            validation_data_hash = DB[validation_key]
+            # Get a random key up to the miners storage limit
+            validation_key = str( random.randint( 10000 ) )
+            validation_data_hash = hashes_db.get(rocksdb.ReadOptions(), validation_key )
             retrieve_responses = dendrite.query(
                 # Send the query to all axons in the network.
                 metagraph.axons,
@@ -161,11 +145,11 @@ def main( config ):
                 score = 0
 
                 # Get the hash of the returned data and check it against the known hash.
-                resp_hash = hashlib.sha256(resp_i.encode()).hexdigest()
+                computed_hash = hashlib.sha256(resp_i.encode()).hexdigest()
 
                 # Check if the miner has provided the correct response by doubling the dummy input.
                 # If correct, set their score for this round to 1.
-                if resp_hash == validation_data_hash:
+                if computed_hash == validation_data_hash:
                     score = 1
 
                 # Update the global score of the miner.

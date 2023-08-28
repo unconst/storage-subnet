@@ -1,0 +1,16 @@
+[package]
+name = "storer_db_project"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rocksdb = "0.21.0" 
+rand = "0.8"
+rand_chacha = "0.3"
+indicatif = "0.16"
+clap = "2.33"
+sha2 = "0.9"
+rayon = "1.5"
+lazy_static = "1.4"
+
+

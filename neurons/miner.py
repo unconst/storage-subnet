@@ -28,7 +28,7 @@ import traceback
 import bittensor as bt
 
 # Custom modules
-import shelve
+import rocksdb
               
 # import this repo
 import storage
@@ -39,7 +39,7 @@ def get_config():
     # Using command-line arguments allows users to customize various miner settings.
     parser = argparse.ArgumentParser()
     # TODO(developer): Adds your custom miner arguments to the parser.
-    parser.add_argument('--miner_db', default='~/miner_db', help='Miner DB location')
+    parser.add_argument('--path_to_data', default='~/data_db', help='Miner DB location generated from cargo run -- --path ~/datadb --n 10 --size 10000000 --seed 0 --hash')
     # Adds override arguments for network and netuid.
     parser.add_argument( '--netuid', type = int, default = 1, help = "The chain subnet uid." )
     # Adds subtensor specific arguments i.e. --subtensor.chain_endpoint ... --subtensor.network ...
@@ -104,8 +104,8 @@ def main( config ):
         my_subnet_uid = metagraph.hotkeys.index(wallet.hotkey.ss58_address)
         bt.logging.info(f"Running miner on uid: {my_subnet_uid}")
 
-    # Build my shelve DB
-    DB = shelve.open(os.path.expanduser( config.miner_db) )  
+    # Build my DB
+    data_db = rocksdb.DB(data_path, rocksdb.Options(create_if_missing=True))
 
     # Step 4: Set up miner functionalities
     # The following functions control the miner's response to incoming requests.
@@ -141,9 +141,9 @@ def main( config ):
         prirority = float( metagraph.S[ caller_uid ] ) # Return the stake as the priority.
         bt.logging.trace(f'Prioritizing {synapse.dendrite.hotkey} with value: ', prirority)
         return prirority
-
+    
     # This is the core miner function, which decides the miner's response to a valid, high-priority request.
-    def store( synapse: storage.protocol.Store) -> storage.protocol.Store:
+    def store( synapse: storage.protocol.Store ) -> storage.protocol.Store:
         # TODO(developer): Define how miners should process requests.
         # This function runs after the synapse has been deserialized (i.e. after synapse.data is available).
         # This function runs after the blacklist and priority functions have been called.
@@ -154,12 +154,8 @@ def main( config ):
     
     # This is the core miner function, which decides the miner's response to a valid, high-priority request.
     def retrieve( synapse: storage.protocol.Retrieve ) -> storage.protocol.Retrieve:
-        # TODO(developer): Define how miners should process requests.
-        # This function runs after the synapse has been deserialized (i.e. after synapse.data is available).
-        # This function runs after the blacklist and priority functions have been called.
-        # Below: simple template logic: return the input value multiplied by 2.
-        # If you change this, your miner will lose emission in the network incentive landscape.
-        synapse.data = DB[ synapse.key ]
+        # Returns the data stored at the key.
+        synapse.data = data_db.get(rocksdb.ReadOptions(), data_key)
         return synapse
 
     # Step 5: Build and link miner functions to the axon.
@@ -181,7 +177,7 @@ def main( config ):
 
     # Serve passes the axon information to the network + netuid we are hosting on.
     # This will auto-update if the axon port of external ip have changed.
-    bt.logging.info(f"Serving axon {dummy} on network: {config.subtensor.chain_endpoint} with netuid: {config.netuid}")
+    bt.logging.info(f"Serving axon {store} and {retrieve} on network: {config.subtensor.chain_endpoint} with netuid: {config.netuid}")
     axon.serve( netuid = config.netuid, subtensor = subtensor )
 
     # Start  starts the miner's axon, making it active on the network.
