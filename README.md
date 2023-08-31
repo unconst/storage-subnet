@@ -17,6 +17,7 @@
 
 This is a prototype incentive mechanism for storage. 
 
+
 ---
 
 # Running the template

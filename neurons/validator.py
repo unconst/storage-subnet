@@ -183,6 +183,9 @@ def main( config ):
             step += 1
             # Resync our local state with the latest state from the blockchain.
             metagraph = subtensor.metagraph(config.netuid)
+            # Wait a block step.
+            time.sleep(bittensor.__blocktime__)
+
 
         # If we encounter an unexpected error, log it for debugging.
         except RuntimeError as e:
