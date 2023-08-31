@@ -28,8 +28,9 @@ import traceback
 import bittensor as bt
 
 # Custom modules
+import asyncio
 import rocksdb
-              
+
 # import this repo
 import storage
 
@@ -104,43 +105,24 @@ def main( config ):
         my_subnet_uid = metagraph.hotkeys.index(wallet.hotkey.ss58_address)
         bt.logging.info(f"Running miner on uid: {my_subnet_uid}")
 
-    # Build my DB
-    data_db = rocksdb.DB(data_path, rocksdb.Options(create_if_missing=True))
+    def sync_get(db, options, key):
+        return asyncio.run(db.get(options, key))
 
-    # Step 4: Set up miner functionalities
-    # The following functions control the miner's response to incoming requests.
-    # The blacklist function decides if a request should be ignored.
-    def blacklist_fn( synapse: storage.protocol.Dummy ) -> bool:
-        # TODO(developer): Define how miners should blacklist requests. This Function 
-        # Runs before the synapse data has been deserialized (i.e. before synapse.data is available).
-        # The synapse is instead contructed via the headers of the request. It is important to blacklist
-        # requests before they are deserialized to avoid wasting resources on requests that will be ignored.
-        # Below: Check that the hotkey is a registered entity in the metagraph.
-        if synapse.dendrite.hotkey not in metagraph.hotkeys:
-            # Ignore requests from unrecognized entities.
-            bt.logging.trace(f'Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}')
-            return True
-        # TODO(developer): In practice it would be wise to blacklist requests from entities that 
-        # are not validators, or do not have enough stake. This can be checked via metagraph.S
-        # and metagraph.validator_permit. You can always attain the uid of the sender via a
-        # metagraph.hotkeys.index( synapse.dendrite.hotkey ) call.
-        # Otherwise, allow the request to be processed further.
-        bt.logging.trace(f'Not Blacklisting recognized hotkey {synapse.dendrite.hotkey}')
-        return False
+    import threading
 
-    # The priority function determines the order in which requests are handled.
-    # More valuable or higher-priority requests are processed before others.
-    def priority_fn( synapse: storage.protocol.Dummy ) -> float:
-        # TODO(developer): Define how miners should prioritize requests.
-        # Miners may recieve messages from multiple entities at once. This function
-        # determines which request should be processed first. Higher values indicate
-        # that the request should be processed first. Lower values indicate that the
-        # request should be processed later.
-        # Below: simple logic, prioritize requests from entities with more stake.
-        caller_uid = metagraph.hotkeys.index( synapse.dendrite.hotkey ) # Get the caller index.
-        prirority = float( metagraph.S[ caller_uid ] ) # Return the stake as the priority.
-        bt.logging.trace(f'Prioritizing {synapse.dendrite.hotkey} with value: ', prirority)
-        return prirority
+    local_storage = threading.local()
+    def get_data_db():
+        if not hasattr(local_storage, "data_db"):
+            local_storage.data_db = rocksdb.RocksDB(config.path_to_data, rocksdb.Options(create_if_missing=True))
+        return local_storage.data_db
+
+    # This is the core miner function, which decides the miner's response to a valid, high-priority request.
+    async def retrieve( synapse: storage.protocol.Retrieve ) -> storage.protocol.Retrieve:
+        # Returns the data stored at the key.
+        bt.logging.info(f'Got request for hash: {synapse.key }')
+        synapse.data = (await get_data_db().get(rocksdb.ReadOptions(), synapse.key)).value
+        bt.logging.debug(f'Got data: {synapse.data }')
+        return synapse
     
     # This is the core miner function, which decides the miner's response to a valid, high-priority request.
     def store( synapse: storage.protocol.Store ) -> storage.protocol.Store:
@@ -152,11 +134,7 @@ def main( config ):
         DB[ synapse.key ] = synapse.data
         return synapse
     
-    # This is the core miner function, which decides the miner's response to a valid, high-priority request.
-    def retrieve( synapse: storage.protocol.Retrieve ) -> storage.protocol.Retrieve:
-        # Returns the data stored at the key.
-        synapse.data = data_db.get(rocksdb.ReadOptions(), data_key)
-        return synapse
+   
 
     # Step 5: Build and link miner functions to the axon.
     # The axon handles request processing, allowing validators to send this process requests.
@@ -165,15 +143,7 @@ def main( config ):
 
     # Attach determiners which functions are called when servicing a request.
     bt.logging.info(f"Attaching forward function to axon.")
-    axon.attach(
-        forward_fn = store,
-        blacklist_fn = blacklist_fn,
-        priority_fn = priority_fn,
-    ).attach(
-        forward_fn = retrieve,
-        blacklist_fn = blacklist_fn,
-        priority_fn = priority_fn,
-    )
+    axon.attach( store ).attach( retrieve )
 
     # Serve passes the axon information to the network + netuid we are hosting on.
     # This will auto-update if the axon port of external ip have changed.
@@ -209,7 +179,7 @@ def main( config ):
         # If someone intentionally stops the miner, it'll safely terminate operations.
         except KeyboardInterrupt:
             axon.stop()
-            DB.close()
+            data_db.close()
             bt.logging.success('Miner killed by keyboard interrupt.')
             break
         # In case of unforeseen errors, the miner will log the error and continue operations.

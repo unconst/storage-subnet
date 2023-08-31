@@ -30,6 +30,8 @@ import traceback
 import bittensor as bt
 
 # Custom modules
+import asyncio
+import hashlib
 import rocksdb
 
 # import this repo
@@ -41,7 +43,7 @@ def get_config():
 
     parser = argparse.ArgumentParser()
     # TODO(developer): Adds your custom validator arguments to the parser.
-    parser.add_argument('--validator_db', default='~/validator_db', help='validator DB cache location.')
+    parser.add_argument('--path_to_hashes', default='~/hash_db', help='validator DB cache location.')
     # Adds override arguments for network and netuid.
     parser.add_argument( '--netuid', type = int, default = 1, help = "The chain subnet uid." )
     # Adds subtensor specific arguments i.e. --subtensor.chain_endpoint ... --subtensor.network ...
@@ -99,7 +101,9 @@ def main( config ):
     bt.logging.info(f"Metagraph: {metagraph}")
 
     # Build my shelve DB
-    hashes_db = rocksdb.DB(hashes_path, rocksdb.Options(create_if_missing=True))
+    def sync_get(db, options, key):
+        return asyncio.run(db.get(options, key))
+    hashes_db = rocksdb.RocksDB(config.path_to_hashes, rocksdb.Options(create_if_missing=True))
 
     # Step 5: Connect the validator to the network
     if wallet.hotkey.ss58_address not in metagraph.hotkeys:
@@ -124,19 +128,17 @@ def main( config ):
         try:
 
             # Get a random key up to the miners storage limit
-            validation_key = str( random.randint( 10000 ) )
-            validation_data_hash = hashes_db.get(rocksdb.ReadOptions(), validation_key )
+            validation_key = str( random.randint( 1, 100 ) )
+            validation_data_hash = sync_get( hashes_db, rocksdb.ReadOptions(), validation_key ).value
+            bt.logging.info( 'Verifying hash', validation_data_hash )
             retrieve_responses = dendrite.query(
                 # Send the query to all axons in the network.
                 metagraph.axons,
                 # Construct a dummy query.
                 storage.protocol.Retrieve( key = validation_key ), # Construct a dummy query.
                 # All responses have the deserialize function called on them before returning.
-                deserialize = True, 
+                deserialize = False, 
             )
-
-            # Log the results for monitoring purposes.
-            bt.logging.info(f"Received dummy responses: {retrieve_responses}")
 
             # TODO(developer): Define how the validator scores responses.
             # Adjust the scores based on responses from miners.
@@ -145,12 +147,15 @@ def main( config ):
                 score = 0
 
                 # Get the hash of the returned data and check it against the known hash.
-                computed_hash = hashlib.sha256(resp_i.encode()).hexdigest()
-
-                # Check if the miner has provided the correct response by doubling the dummy input.
-                # If correct, set their score for this round to 1.
-                if computed_hash == validation_data_hash:
-                    score = 1
+                if resp_i.data != None:
+                    computed_hash = hashlib.sha256(resp_i.data.encode()).hexdigest()
+                    # Check if the miner has provided the correct response by doubling the dummy input.
+                    # If correct, set their score for this round to 1.
+                    if computed_hash == validation_data_hash:
+                        bt.logging.success(f'Axon {resp_i.axon.hotkey}, Succeded verification of data under hash {validation_data_hash} with computed {computed_hash}')
+                        score = 1
+                    else:
+                        bt.logging.info(f'Axon: {resp_i.axon.hotkey}, Failed verification of data under hash {validation_data_hash} with computed {computed_hash}')
 
                 # Update the global score of the miner.
                 # This score contributes to the miner's weight in the network.
@@ -158,7 +163,7 @@ def main( config ):
                 scores[i] = alpha * scores[i] + (1 - alpha) * score
 
             # Periodically update the weights on the Bittensor blockchain.
-            if (step + 1) % 2 == 0:
+            if (step + 1) % 1000 == 0:
                 # TODO(developer): Define how the validator normalizes scores before setting weights.
                 weights = torch.nn.functional.normalize(scores, p=1.0, dim=0)
                 bt.logging.info(f"Setting weights: {weights}")
@@ -178,8 +183,6 @@ def main( config ):
             step += 1
             # Resync our local state with the latest state from the blockchain.
             metagraph = subtensor.metagraph(config.netuid)
-            # Sleep for a duration equivalent to the block time (i.e., time between successive blocks).
-            time.sleep(bt.__blocktime__)
 
         # If we encounter an unexpected error, log it for debugging.
         except RuntimeError as e:
