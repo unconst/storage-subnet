@@ -119,22 +119,17 @@ def main( config ):
     # This is the core miner function, which decides the miner's response to a valid, high-priority request.
     async def retrieve( synapse: storage.protocol.Retrieve ) -> storage.protocol.Retrieve:
         # Returns the data stored at the key.
-        bt.logging.info(f'Got request for hash: {synapse.key }')
+        bt.logging.info(f'Got request for key: {synapse.key }')
         synapse.data = (await get_data_db().get(rocksdb.ReadOptions(), synapse.key)).value
         bt.logging.debug(f'Got data: {synapse.data }')
         return synapse
     
     # This is the core miner function, which decides the miner's response to a valid, high-priority request.
-    def store( synapse: storage.protocol.Store ) -> storage.protocol.Store:
-        # TODO(developer): Define how miners should process requests.
-        # This function runs after the synapse has been deserialized (i.e. after synapse.data is available).
-        # This function runs after the blacklist and priority functions have been called.
-        # Below: simple template logic: return the input value multiplied by 2.
-        # If you change this, your miner will lose emission in the network incentive landscape.
-        DB[ synapse.key ] = synapse.data
+    async def store( synapse: storage.protocol.Store ) -> storage.protocol.Store:
+        bt.logging.info(f'Got request to store data: {synapse.data} under key: {synapse.key}')
+        synapse.data = (await get_data_db().set( rocksdb.ReadOptions(), synapse.key, synapse.data )).value
+        bt.logging.debug(f'Set data: {synapse.data }')
         return synapse
-    
-   
 
     # Step 5: Build and link miner functions to the axon.
     # The axon handles request processing, allowing validators to send this process requests.
