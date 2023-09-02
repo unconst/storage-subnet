@@ -20,7 +20,7 @@ This is a prototype incentive mechanism for storage where miners serve their har
 ---
 # Partitioning
 
-To allocate your available space fun the following command, this does not create data but instead determines a partition of available space on your machine.
+To allocate your available space fun the following command, this does not create data but instead determines the correct allocation of space on your machine based on your choosed threshold and the stake of other participants in the network.
 ```bash
 python partition/allocate.py 
     --netuid <OPTIONAL: the subnet netuid, defualt = 1> # This is the netuid of the storage subnet you are serving on.
@@ -29,10 +29,10 @@ python partition/allocate.py
     --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli new_coldkey
     --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli, btcli new_hotkey
 # Outputs the following file under your wallet path.
->> /Users/user/<db_path>
->> └── <wallet_name>
->>     └── <wallet_hotkey>
->>         └── partition.json
+>> /Users/user/<db_path> # The root DB directory.
+>> └── <wallet_name> # The wallet name of your miner/validator.
+>>     └── <wallet_hotkey> # The hotkey of your miner/validator.
+>>         └── partition.json # The file containing the allocation details.
 ```
 
 You can view the created partition by running the following command.
@@ -41,28 +41,28 @@ cat ~/{db_path}/{wallet_name}{hotkey_name}/partition.json
 # Example output.
 >> 
     {
-        "i": 0,
-        "block": 1737,
-        "subtensor": "ws://127.0.0.1:9946",
-        "wallet_name": "my_wallet",
-        "wallet_hotkey": "my_hotkey",
-        "netuid": 1,
-        "path": "/Users/user/db_path/wallet_name/hotkey_name",
-        "owner": "5CSkJdaN1HxDHsVev1BfzDkknGYg8Hxnsokio26m4GCPNcHQ",
-        "validator": "5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1",
-        "stake": 0,
-        "size": 17503128,
-        "h_size": "16.69 MB",
-        "threshold": 0.0001,
-        "threshold_space": 35006255,
-        "h_threshold_space": "33.38 MB",
-        "threshold_percent": 50.000001279771276,
-        "availble_space": 350062551040,
-        "h_available_space": "326.02 GB",
-        "available_percent": 0.005000000127977128,
-        "n_chunks": 350,
-        "chunk_size": 100000,
-        "seed": "5CSkJdaN1HxDHsVev1BfzDkknGYg8Hxnsokio26m4GCPNcHQ5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1"
+        "i": 0, # The index of the allocation
+        "block": 1737, # The block at which the allocation was created.
+        "netuid": 1, # The netuid of the subnet.
+        "subtensor": "ws://127.0.0.1:9946", # The chain endpoint.
+        "wallet_name": "my_wallet", # The name of the wallet.
+        "wallet_hotkey": "my_hotkey", # The hotkey of the wallet.
+        "path": "/Users/user/db_path/wallet_name/hotkey_name", # The path of the partition.
+        "owner": "5CSkJdaN1HxDHsVev1BfzDkknGYg8Hxnsokio26m4GCPNcHQ", # The owner ss58 address of the partition.
+        "validator": "5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1", # The validator ss58 address of the partition.
+        "stake": 0, # The stake of the validator.
+        "size": 17503128, # The size of the partition (bytest)
+        "h_size": "16.69 MB", # The size of the partition (human readable)
+        "threshold": 0.0001, # The threshold of the partition (i.e. the maximum amount of space the miner can use based on available)
+        "threshold_space": 35006255, # The threshold of the partition (i.e. the maximum amount of space the miner can use based on available)
+        "h_threshold_space": "33.38 MB", # The human readable threshold of the partition (i.e. the maximum amount of space the miner can use based on available)
+        "threshold_percent": 50.000001279771276, # The percent of the threshold of the partition (i.e. the maximum amount of space the miner can use based on available)
+        "availble_space": 350062551040, # The total available space on the partition.
+        "h_available_space": "326.02 GB", # The total available space on the partition (human readable)
+        "available_percent": 0.005000000127977128, # The proportion of spaces used based on available.
+        "n_chunks": 350, # The number of chunks in the partition.
+        "chunk_size": 100000, # The size of each chunk.
+        "seed": "5CSkJdaN1HxDHsVev1BfzDkknGYg8Hxnsokio26m4GCPNcHQ5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1" # The DB seed used to generate the partition.
     },
 ```
 
@@ -94,7 +94,7 @@ python partition/generate.py
 
 If you generated both the data and hashes you can verify them by running the following command.
 ```bash
-python scripts/verify.py 
+python partition/verify.py 
     --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-dbn>  # This is where the partition will be created storing network data.
     --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
     --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
