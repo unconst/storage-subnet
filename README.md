@@ -15,16 +15,19 @@
 
 ---
 
-This is a prototype incentive mechanism for storage. 
-
+This is a prototype incentive mechanism for storage where miners serve their harddrive space onto the network and prove its existence to validators. Miners are rewarded proportionally to the amount of space they can prove they have, and also allow encrypted data to be stored there by validators. The amount of space available to each validator is proportional to the amount of stake they have on the network.
 
 ---
+# Partitioning
 
-# Running the template
-Before running the template you will need to attain a subnetwork on either Bittensor's main network, test network, or your own staging network. To create subnetworks on each of these subnets follow the instructions in files below:
-- `docs/running_on_staging.md`
-- `docs/running_on_testnet.md`
-- `docs/running_on_mainnet.md`
+To partition your available space fun the following command.
+```bash
+python partition.py 
+    --netuid <the subnet netuid> # This is the netuid of the storage subnet you are serving on.
+    --threshold <threshold i.e. 0.0001>  # The threshold for the partitioning algorithm which is the maximum amount of space the miner can use based on available.
+    --path <path to partition>  # This is where the partition will be created storing network data.
+```
+
 
 </div>
 
