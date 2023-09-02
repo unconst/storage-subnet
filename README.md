@@ -20,9 +20,9 @@ This is a prototype incentive mechanism for storage where miners serve their har
 ---
 # Partitioning
 
-To partition your available space fun the following command, this does not create data but instead determines a partition of available space on your machine.
+To allocate your available space fun the following command, this does not create data but instead determines a partition of available space on your machine.
 ```bash
-python scripts/create_partition.py 
+python partition/allocate.py 
     --netuid <OPTIONAL: the subnet netuid, defualt = 1> # This is the netuid of the storage subnet you are serving on.
     --threshold <OPTIONAL: threshold i.e. 0.0001, default =  0.0001>  # The threshold for the partitioning algorithm which is the maximum amount of space the miner can use based on available.
     ---db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-db>  # This is where the partition will be created storing network data.
@@ -66,10 +66,16 @@ cat ~/{db_path}/{wallet_name}{hotkey_name}/partition.json
     },
 ```
 
-To fill the partition, i.e. generate the random data on your machine, run the following command.
+To fill the partition, i.e. generate the random data on your machine, you need to first build the rust script under `scripts/generate_db` by running the following command.
 ```bash
-python scripts/fill_partition.py 
-    --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-dbn>  # This is where the partition will be created storing network data.
+cd partition/generate_db
+cargo build --release
+```
+
+Once this script is built you can fill all your paritition files in parallel by running the following command. 
+```bash
+python partition/generate.py 
+    --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-db>  # This is where the partition will be created storing network data.
     --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
     --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
     --only_hash <OPTIONAL: only hash the data i.e. for validation, default = False> # If true, only hashes the data, otherwise creates the data too, validators should use this.
@@ -88,7 +94,7 @@ python scripts/fill_partition.py
 
 If you generated both the data and hashes you can verify them by running the following command.
 ```bash
-python scripts/verify_partition.py 
+python scripts/verify.py 
     --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-dbn>  # This is where the partition will be created storing network data.
     --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
     --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
@@ -103,7 +109,18 @@ python scripts/verify_partition.py
 >>         Data /Users/napoli/bittensor-db/default/default/data-5GZCGWuJgx3wGERm36WAV2cwS4D1KqpaYHg1ArGWDMoHvvNf
 >>         Hashes: /Users/napoli/bittensor-db/default/default/hashes-5GZCGWuJgx3wGERm36WAV2cwS4D1KqpaYHg1ArGWDMoHvvNf
 >> 2023-09-02 12:01:06.698 |     SUCCESS      | All hashes verified successfully!
+```
 </div>
+
+--- 
+### Running the Miner
+
+To run a miner follow the instruction from above to generate your parition. Once your parition is verified and created your miner can serve it onto the network. To run the miner run the following command.
+```bash
+python neurons/miner.py
+    --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
+    --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
+    --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-db>  # This is where the partition will be created storing network data.
 
 ---
 

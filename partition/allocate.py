@@ -1,6 +1,7 @@
 import os
 import json
 import torch
+import shutil
 import argparse
 import subprocess
 import bittensor as bt
@@ -10,10 +11,12 @@ def get_available_space(path):
     stat = os.statvfs(path)
     return stat.f_frsize * stat.f_bavail
 
-def calculate_number_of_chunks(available_space, chunk_size, threshold=0.0001):
-    """Calculate the number of chunks that can be created without exceeding the threshold."""
-    total_space = available_space * threshold
-    return int(total_space / chunk_size)
+def confirm_directory_deletion(directory):
+    print(f"Are you sure you want to delete the previous partition files (data and hashes) under : {directory}? (yes/no)")
+    response = input()
+    if response.lower() in ['yes', 'y']:
+        return True
+    return False
 
 def human_readable_size(size):
     """Convert a size in bytes to a human-readable format."""
@@ -60,8 +63,8 @@ def main( config ):
     partitions = []
     for i in range( num_dbs ):
         denom = (metagraph.S + torch.ones_like(metagraph.S)).sum()
-        size = ((metagraph.S[i] + 1)/denom) * filling_space
-        n_chunks = calculate_number_of_chunks( available_space, config.chunk_size, config.threshold )
+        db_size = ((metagraph.S[i] + 1)/denom) * filling_space
+        n_chunks = int( db_size / int(config.chunk_size ) ) + 1
         path = f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}"
         seed = f"{wallet.hotkey.ss58_address}{metagraph.hotkeys[i]}"
         partition = {
@@ -75,15 +78,15 @@ def main( config ):
             "owner": wallet.hotkey.ss58_address,
             "validator": metagraph.hotkeys[i],
             "stake": int(metagraph.S[i].item()),
-            "size": int(size),
-            "h_size": human_readable_size(size),
+            "size": int(db_size),
+            "h_size": human_readable_size(db_size),
             "threshold": config.threshold,
             "threshold_space": int(filling_space),
             "h_threshold_space": human_readable_size(filling_space),
-            "threshold_percent": 100 * (float(size) / float(filling_space)),
+            "threshold_percent": 100 * (float(db_size) / float(filling_space)),
             "availble_space": int(available_space),
             "h_available_space": human_readable_size(available_space),
-            "available_percent": 100 * (float(size) / float(available_space)),
+            "available_percent": 100 * (float(db_size) / float(available_space)),
             "n_chunks": int(n_chunks),
             "chunk_size": int(config.chunk_size),
             "seed": seed,
@@ -91,6 +94,11 @@ def main( config ):
         bt.logging.info( f'   partition_{i}: {str(json.dumps(partition, indent=4))}' )
         partitions.append(partition)
     partition_file = f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}/partition.json"
+    if os.path.exists(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}"):
+        if confirm_directory_deletion(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}"):
+            shutil.rmtree(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}")
+        else:
+            exit()
     if not os.path.exists(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}"):
         os.makedirs(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}")
     bt.logging.info( f'Writing partitions to {partition_file}' )

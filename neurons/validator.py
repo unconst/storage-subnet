@@ -30,9 +30,9 @@ import traceback
 import bittensor as bt
 
 # Custom modules
-import asyncio
 import hashlib
-import rocksdb
+import sqlite3
+from tqdm import tqdm
 
 # import this repo
 import storage
@@ -100,10 +100,13 @@ def main( config ):
     metagraph = subtensor.metagraph( config.netuid )
     bt.logging.info(f"Metagraph: {metagraph}")
 
-    # Build my shelve DB
-    def sync_get(db, options, key):
-        return asyncio.run(db.get(options, key))
-    hashes_db = rocksdb.RocksDB(config.path_to_hashes, rocksdb.Options(create_if_missing=True))
+    # Connect to SQLite databases.
+    bt.logging.info(f"Setting up data database connections")
+    dbpath_prefix = os.path.expanduser( f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}/hashes" )
+    data_base_connections = {}
+    for hotkey in tqdm( metagraph.hotkeys ):
+        bt.logging.info(f"Connecting to database under path: {dbpath_prefix}-{hotkey}")
+        data_base_connections[hotkey] = sqlite3.connect(f"{dbpath_prefix}-{hotkey}")
 
     # Step 5: Connect the validator to the network
     if wallet.hotkey.ss58_address not in metagraph.hotkeys:
