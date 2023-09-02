@@ -34,6 +34,7 @@ from tqdm import tqdm
 
 # import this repo
 import storage
+import threading
 
 def get_config():
     # Step 2: Set up the configuration parser
@@ -107,25 +108,25 @@ def main( config ):
         bt.logging.info(f"Running miner on uid: {my_subnet_uid}")
 
     # Connect to SQLite databases.
-    bt.logging.info(f"Setting up data database connections")
     dbpath_prefix = os.path.expanduser( f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}/data" )
-    data_base_connections = {}
-    for hotkey in tqdm( metagraph.hotkeys ):
-        bt.logging.info(f"Connecting to database under path: {dbpath_prefix}-{hotkey}")
-        data_base_connections[hotkey] = sqlite3.connect(f"{dbpath_prefix}-{hotkey}")
+    local_storage = threading.local()
+    def get_db_connection(hotkey):
+        # Check if we have a connection for this thread
+        if not hasattr(local_storage, f"connection_{hotkey}"):
+            dbpath = f"{dbpath_prefix}-{wallet.hotkey.ss58_address}-{hotkey}"
+            bt.logging.info(f"Connecting to database under path: {dbpath}")
+            setattr(local_storage, f"connection_{hotkey}", sqlite3.connect(dbpath))
+        return getattr(local_storage, f"connection_{hotkey}")
 
     async def retrieve( synapse: storage.protocol.Retrieve ) -> storage.protocol.Retrieve:
         # Check if we have the data connection locally
-        bt.logging.info(f'Got request for key: {synapse.key} from dendrite: {synapse.dendrite.hotkey}')
-        if synapse.dendrite.hotkey not in data_base_connections:
-            return synapse
-        
-        # Connect to SQLite databases
-        db = data_base_connections[synapse.dendrite.hotkey]
+        bt.logging.info(f'Got request for key: {synapse.key} from dendrite: {synapse.dendrite.hotkey}')        # Connect to SQLite databases
+        db = get_db_connection(synapse.dendrite.hotkey)
         cursor = db.cursor()
 
         # Fetch data from SQLite databases
-        cursor.execute("SELECT data FROM DB WHERE id=?", (synapse.key,))
+        query = f"SELECT data FROM DB{wallet.hotkey.ss58_address}{synapse.dendrite.hotkey} WHERE id=?"
+        cursor.execute(query, (synapse.key,))
         data_value = cursor.fetchone()
         
         # Set data to None if key not found
@@ -139,12 +140,9 @@ def main( config ):
 
     async def store( synapse: storage.protocol.Store ) -> storage.protocol.Store:
         # Check if we have the data connection locally
-        bt.logging.info(f'Got request for key: {synapse.key} from dendrite: {synapse.dendrite.hotkey}')
-        if synapse.dendrite.hotkey not in data_base_connections:
-            return synapse
-        
+        bt.logging.info(f'Got request for key: {synapse.key} from dendrite: {synapse.dendrite.hotkey}')        
         # Connect to SQLite databases
-        db = data_base_connections[synapse.dendrite.hotkey]
+        db = get_db_connection(synapse.dendrite.hotkey)
         cursor = db.cursor()
         bt.logging.info(f'Got request to store data: {synapse.data} under key: {synapse.key}')
 
@@ -163,7 +161,7 @@ def main( config ):
 
     # Attach determiners which functions are called when servicing a request.
     bt.logging.info(f"Attaching forward function to axon.")
-    axon.attach( store ).attach( retrieve )
+    axon.attach( retrieve ).attach( store )
 
     # Serve passes the axon information to the network + netuid we are hosting on.
     # This will auto-update if the axon port of external ip have changed.
@@ -199,7 +197,8 @@ def main( config ):
         # If someone intentionally stops the miner, it'll safely terminate operations.
         except KeyboardInterrupt:
             axon.stop()
-            data_db.close()
+            for hotkey in tqdm( metagraph.hotkeys ):
+                data_base_connections[hotkey].close()
             bt.logging.success('Miner killed by keyboard interrupt.')
             break
         # In case of unforeseen errors, the miner will log the error and continue operations.

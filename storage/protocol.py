@@ -27,6 +27,9 @@ class Store( bt.Synapse ):
     # String encoded data.
     data: str
 
+class GetAllocation( bt.Synapse ):
+    allocation: dict
+
 class Retrieve( bt.Synapse ):
     # Key of data.
     key: str = None
