@@ -103,7 +103,7 @@ def run_cargo_command(alloc, hash=False, restart=False):
     if restart:
         cmd.append("--delete")
     cargo_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generate_db")
-    result = subprocess.run(cmd, cwd=cargo_directory, capture_output=False, text=True)
+    result = subprocess.run(cmd, cwd=cargo_directory, capture_output=True, text=True)
     if result.stderr:
         bt.logging.error(f"Failed: {file_path}")
 
@@ -130,7 +130,7 @@ def generate(config, allocations, no_prompt=False):
 
     # Write the allocations to a JSON file.
     allocation_file = os.path.join(allocation_dir, "allocation.json")
-    bt.logging.info(f'Writing allocations to {allocation_file}')
+    bt.logging.debug(f'Writing allocations to {allocation_file}')
     with open(allocation_file, 'w') as f:
         json.dump(allocations, f, indent=4)
 

@@ -141,10 +141,10 @@ def main( config ):
     # Connect to SQLite databases.
     bt.logging.info(f"Setting up data database connections")
     dbpath_prefix = os.path.expanduser( f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}/hashes" )
-    data_base_connections = {}
-    for hotkey in tqdm( metagraph.hotkeys ):
-        bt.logging.info(f"Connecting to database under path: {dbpath_prefix}-{hotkey}-{wallet.hotkey.ss58_address}")
-        data_base_connections[hotkey] = sqlite3.connect(f"{dbpath_prefix}-{hotkey}-{wallet.hotkey.ss58_address}")
+    # data_base_connections = {}
+    # for hotkey in tqdm( metagraph.hotkeys ):
+    #     bt.logging.info(f"Connecting to database under path: {dbpath_prefix}-{hotkey}-{wallet.hotkey.ss58_address}")
+    #     data_base_connections[hotkey] = sqlite3.connect(f"{dbpath_prefix}-{hotkey}-{wallet.hotkey.ss58_address}")
 
     # Step 7: The Main Validation Loop
     bt.logging.info("Starting validator loop.")
@@ -160,12 +160,18 @@ def main( config ):
                 bt.logging.debug(f"Validating miner: {hotkey} with allocation: {alloc}")
 
                 # Select a random chunk to validate.
-                chunk_i = str( random.randint( 1, max(1, alloc['n_chunks'] ) ) )
+                chunk_i = str( random.randint( 1, alloc['n_chunks'] ) )
                 bt.logging.debug(f"Validating chunk: {chunk_i}")
 
                 # Get the hash of the data to validate from the database.
-                validation_hash = data_base_connections[hotkey].cursor().execute(f"SELECT data FROM DB{alloc['seed']} WHERE id=?", (chunk_i,)).fetchone()[0]
+                db = sqlite3.connect(f"{dbpath_prefix}-{hotkey}-{wallet.hotkey.ss58_address}")
+                try:
+                    validation_hash = db.cursor().execute(f"SELECT data FROM DB{alloc['seed']} WHERE id=?", (chunk_i,)).fetchone()[0]
+                except:
+                    bt.logging.error(f"Failed to get validation hash for chunk: {chunk_i}")
+                    continue
                 bt.logging.debug(f"Validation hash: {validation_hash}")
+                db.close()
 
                 # Query the miner for the data.
                 miner_data = dendrite.query( metagraph.axons[i], storage.protocol.Retrieve( key = chunk_i ), deserialize = True )
@@ -174,7 +180,7 @@ def main( config ):
                 if miner_data == None:
                     # The miner could not respond with the data.
                     # We reduce the estimated allocation for the miner.
-                    next_allocations[i]['n_chunks'] = int( next_allocations[i]['n_chunks'] * 0.9 )
+                    next_allocations[i]['n_chunks'] = max( int( next_allocations[i]['n_chunks'] * 0.9 ), 25 )
                     verified_allocations[i]['n_chunks'] = min( next_allocations[i]['n_chunks'], verified_allocations[i]['n_chunks'] )
                     bt.logging.debug(f"Miner did not respond with data, reducing allocation to: {next_allocations[i]['n_chunks']}")
 
@@ -192,14 +198,14 @@ def main( config ):
                     else:
                         # The miner has provided an incorrect response.
                         # We need to decrease our estimation..
-                        next_allocations[i]['n_chunks'] = int( next_allocations[i]['n_chunks'] * 0.9 )
+                        next_allocations[i]['n_chunks'] = max( int( next_allocations[i]['n_chunks'] * 0.9 ), 25 )
                         verified_allocations[i]['n_chunks'] = min( next_allocations[i]['n_chunks'], verified_allocations[i]['n_chunks'] )
                         bt.logging.debug(f"Miner provided incorrect response, reducing allocation to: {next_allocations[i]['n_chunks']}")
 
             # Reallocate the validator's chunks.
-            bt.logging.info(f"Prev allocations: {previous_allocations}")
+            bt.logging.debug(f"Prev allocations: {[ a['n_chunks'] for a in previous_allocations ]  }")
             allocate.generate( config, next_allocations, no_prompt = True )
-            bt.logging.info(f"New allocations: {next_allocations}")
+            bt.logging.info(f"Allocations: {[ allocate.human_readable_size( a['n_chunks'] * allocate.CHUNK_SIZE ) for a in next_allocations ] }")
 
             # Periodically update the weights on the Bittensor blockchain.
             if (step + 1) % 1000 == 0:
@@ -223,7 +229,7 @@ def main( config ):
             # Resync our local state with the latest state from the blockchain.
             metagraph = subtensor.metagraph(config.netuid)
             # Wait a block step.
-            time.sleep(bt.__blocktime__)
+            time.sleep(1)
 
         # If we encounter an unexpected error, log it for debugging.
         except RuntimeError as e:
