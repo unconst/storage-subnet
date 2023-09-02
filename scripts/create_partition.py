@@ -1,4 +1,5 @@
 import os
+import json
 import torch
 import argparse
 import subprocess
@@ -56,42 +57,45 @@ def main( config ):
 
     num_dbs = metagraph.n.item()
     bt.logging.info( f'Creating: {num_dbs} databases with under paths and sizes' )
-    paths = []
-    sizes = []
-    chunks = []
+    partitions = []
     for i in range( num_dbs ):
         denom = (metagraph.S + torch.ones_like(metagraph.S)).sum()
         size = ((metagraph.S[i] + 1)/denom) * filling_space
         n_chunks = calculate_number_of_chunks( available_space, config.chunk_size, config.threshold )
-        path = f"{config.db_path}/DB-{wallet.hotkey.ss58_address[:5]}-{metagraph.hotkeys[i][:5]}"
-        bt.logging.info( f'   size: {human_readable_size(size)} --- n_chunks: {n_chunks} --- path: {path}' )
-        paths.append( path )
-        sizes.append( size )
-        chunks.append( n_chunks )
-    
-    for i in range( num_dbs ):
-        path = paths[i]
-        size = sizes[i]
-        n_chunks = chunks[i]
+        path = f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}"
         seed = f"{wallet.hotkey.ss58_address}{metagraph.hotkeys[i]}"
-        bt.logging.info( f'Creating DB with: \nsize: {size} \nn_chunks: {n_chunks} \nseed: {seed} \npath: {path}' )
-        cmd = [
-            "cargo", "run", "--",
-            "--path", path,
-            "--n", str(n_chunks),
-            "--size", str(config.chunk_size),
-            "--seed", seed,
-            "--delete"
-        ]
-        env = {
-            **dict(os.environ),
-            "RUST_LOG": "info"
+        partition = {
+            "i": i,
+            "block": metagraph.block.item(),
+            "subtensor": sub.chain_endpoint,
+            "wallet_name": config.wallet.name,
+            "wallet_hotkey": config.wallet.hotkey,
+            "netuid": config.netuid,
+            "path": path,
+            "owner": wallet.hotkey.ss58_address,
+            "validator": metagraph.hotkeys[i],
+            "stake": int(metagraph.S[i].item()),
+            "size": int(size),
+            "h_size": human_readable_size(size),
+            "threshold": config.threshold,
+            "threshold_space": int(filling_space),
+            "h_threshold_space": human_readable_size(filling_space),
+            "threshold_percent": 100 * (float(size) / float(filling_space)),
+            "availble_space": int(available_space),
+            "h_available_space": human_readable_size(available_space),
+            "available_percent": 100 * (float(size) / float(available_space)),
+            "n_chunks": int(n_chunks),
+            "chunk_size": int(config.chunk_size),
+            "seed": seed,
         }
-        cargo_directory = os.path.join(os.getcwd(), "generate_db")
-        result = subprocess.run(cmd, env=env, cwd=cargo_directory, capture_output=True, text=True)
-        print(result.stdout)
-        if result.stderr:
-            print("Errors:", result.stderr)
+        bt.logging.info( f'   partition_{i}: {str(json.dumps(partition, indent=4))}' )
+        partitions.append(partition)
+    partition_file = f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}/partition.json"
+    if not os.path.exists(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}"):
+        os.makedirs(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}")
+    bt.logging.info( f'Writing partitions to {partition_file}' )
+    with open(partition_file, 'w') as f:
+        json.dump(partitions, f, indent=4)
 
 if __name__ == "__main__":
     main( get_config() )

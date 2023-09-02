@@ -20,15 +20,89 @@ This is a prototype incentive mechanism for storage where miners serve their har
 ---
 # Partitioning
 
-To partition your available space fun the following command.
+To partition your available space fun the following command, this does not create data but instead determines a partition of available space on your machine.
 ```bash
-python partition.py 
-    --netuid <the subnet netuid> # This is the netuid of the storage subnet you are serving on.
-    --threshold <threshold i.e. 0.0001>  # The threshold for the partitioning algorithm which is the maximum amount of space the miner can use based on available.
-    --path <path to partition>  # This is where the partition will be created storing network data.
+python scripts/create_partition.py 
+    --netuid <OPTIONAL: the subnet netuid, defualt = 1> # This is the netuid of the storage subnet you are serving on.
+    --threshold <OPTIONAL: threshold i.e. 0.0001, default =  0.0001>  # The threshold for the partitioning algorithm which is the maximum amount of space the miner can use based on available.
+    ---db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-db>  # This is where the partition will be created storing network data.
+    --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli new_coldkey
+    --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli, btcli new_hotkey
+# Outputs the following file under your wallet path.
+>> /Users/user/<db_path>
+>> └── <wallet_name>
+>>     └── <wallet_hotkey>
+>>         └── partition.json
 ```
 
+You can view the created partition by running the following command.
+```bash
+cat ~/{db_path}/{wallet_name}{hotkey_name}/partition.json 
+# Example output.
+>> 
+    {
+        "i": 0,
+        "block": 1737,
+        "subtensor": "ws://127.0.0.1:9946",
+        "wallet_name": "my_wallet",
+        "wallet_hotkey": "my_hotkey",
+        "netuid": 1,
+        "path": "/Users/user/db_path/wallet_name/hotkey_name",
+        "owner": "5CSkJdaN1HxDHsVev1BfzDkknGYg8Hxnsokio26m4GCPNcHQ",
+        "validator": "5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1",
+        "stake": 0,
+        "size": 17503128,
+        "h_size": "16.69 MB",
+        "threshold": 0.0001,
+        "threshold_space": 35006255,
+        "h_threshold_space": "33.38 MB",
+        "threshold_percent": 50.000001279771276,
+        "availble_space": 350062551040,
+        "h_available_space": "326.02 GB",
+        "available_percent": 0.005000000127977128,
+        "n_chunks": 350,
+        "chunk_size": 100000,
+        "seed": "5CSkJdaN1HxDHsVev1BfzDkknGYg8Hxnsokio26m4GCPNcHQ5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1"
+    },
+```
 
+To fill the partition, i.e. generate the random data on your machine, run the following command.
+```bash
+python scripts/fill_partition.py 
+    --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-dbn>  # This is where the partition will be created storing network data.
+    --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
+    --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
+    --only_hash <OPTIONAL: only hash the data i.e. for validation, default = False> # If true, only hashes the data, otherwise creates the data too, validators should use this.
+    --restart <OPTIONAL: restart the fill process from the beginning, otherwise restarts from the last created chunk. default = False> # If true, the hashes and data creation process restarts instead using a checkpoint.
+
+# Should create the files like the following.
+>> /Users/user/<path>
+>> └── <wallet_name>
+>>     └── <wallet_hotkey>
+>>         ├── data-5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1
+>>         ├── data-5GZCGWuJgx3wGERm36WAV2cwS4D1KqpaYHg1ArGWDMoHvvNf
+>>         ├── hashes-5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1
+>>         ├── hashes-5GZCGWuJgx3wGERm36WAV2cwS4D1KqpaYHg1ArGWDMoHvvNf
+>>         └── partition.json
+```
+
+If you generated both the data and hashes you can verify them by running the following command.
+```bash
+python scripts/verify_partition.py 
+    --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-dbn>  # This is where the partition will be created storing network data.
+    --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
+    --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
+
+#Example output
+>> 2023-09-02 12:01:06.548 |       INFO       | Verifying partitios from: /Users/napoli/bittensor-db/default/default/partition.json
+>> 2023-09-02 12:01:06.550 |       INFO       | Verifying: 
+>>         Data /Users/napoli/bittensor-db/default/default/data-5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1
+>>         Hashes: /Users/napoli/bittensor-db/default/default/hashes-5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1
+>> 2023-09-02 12:01:06.626 |     SUCCESS      | All hashes verified successfully!
+>> 2023-09-02 12:01:06.627 |       INFO       | Verifying: 
+>>         Data /Users/napoli/bittensor-db/default/default/data-5GZCGWuJgx3wGERm36WAV2cwS4D1KqpaYHg1ArGWDMoHvvNf
+>>         Hashes: /Users/napoli/bittensor-db/default/default/hashes-5GZCGWuJgx3wGERm36WAV2cwS4D1KqpaYHg1ArGWDMoHvvNf
+>> 2023-09-02 12:01:06.698 |     SUCCESS      | All hashes verified successfully!
 </div>
 
 ---
