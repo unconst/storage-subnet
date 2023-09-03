@@ -18,9 +18,10 @@
 This is a prototype incentive mechanism for storage where miners serve their harddrive space onto the network and prove its existence to validators. Miners are rewarded proportionally to the amount of space they can prove they have, and also allow encrypted data to be stored there by validators. The amount of space available to each validator is proportional to the amount of stake they have on the network.
 
 ---
-# Partitioning
+# Mining
 
-Both the validator and the miner must periodially parition and reparition their harddrives. Validators generate hashstates to verify the network, and miners generate random data to prove their available space. To run the partitioning process run the following command.
+The miner must parition it hard drive before mining. This process generates random data which can used by validators to prove your available space. 
+To run the partitioning process run the following command.
 ```bash
 cd partition/
 cd generate_db; cargo build --release

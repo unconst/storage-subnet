@@ -103,7 +103,7 @@ def run_cargo_command(alloc, hash=False, restart=False):
     if restart:
         cmd.append("--delete")
     cargo_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generate_db")
-    result = subprocess.run(cmd, cwd=cargo_directory, capture_output=True, text=True)
+    result = subprocess.run(cmd, cwd=cargo_directory, capture_output=False, text=True)
     if result.stderr:
         bt.logging.error(f"Failed: {file_path}")
 
@@ -122,8 +122,8 @@ def generate(config, allocations, no_prompt=False):
             exit()
 
     # Check and potentially delete existing allocation directory.
-    if os.path.exists(allocation_dir):
-        shutil.rmtree(allocation_dir)
+    # if os.path.exists(allocation_dir):
+    #     shutil.rmtree(allocation_dir)
       
     # Create the directory for the allocation file.
     os.makedirs(allocation_dir, exist_ok=True)
