@@ -2,6 +2,7 @@ import os
 import json
 import torch
 import shutil
+import typing
 import sqlite3
 import hashlib
 import argparse
@@ -76,21 +77,27 @@ def human_readable_size(size: int) -> str:
 
     return f"{size} bytes"
 
-def run_cargo_command(alloc, hash=False, restart=False):
+def run_rust_generate(alloc, hash=False, restart=False):
     """
-    Run the rust script to generate the data and hashes DBs.
+    This function runs a Rust script to generate the data and hashes databases.
 
     Args:
-    - alloc (dict): Allocation details.
-    - hash (bool): If True, generate hash. Default is False.
-    - restart (bool): If True, restart the database. Default is False.
+    - alloc (dict): A dictionary containing allocation details. It includes the path to the database, the number of chunks, the size of each chunk, and the seed for the random number generator.
+    - hash (bool): A flag indicating whether to generate a hash database. If True, a hash database is generated. If False, a data database is generated. Default is False.
+    - restart (bool): A flag indicating whether to restart the database. If True, the existing database is deleted and a new one is created. If False, the existing database is used. Default is False.
     """
+    # Get the path to the database from the allocation details.
     db_path = alloc['path']
+
+    # If the database directory does not exist, create it.
     if not os.path.exists(db_path):
         os.makedirs(db_path)
-        print ('made dires')
+        print ('Directory created')
     
+    # Construct the file path for the database. If the hash flag is True, a hash database is created. Otherwise, a data database is created.
     file_path = f"{db_path}/hashes-{alloc['miner']}-{alloc['validator']}" if hash else f"{db_path}/data-{alloc['miner']}-{alloc['validator']}"
+
+    # Construct the command to run the Rust script. The command includes the path to the script, the path to the database, the number of chunks, the size of each chunk, and the seed for the random number generator.
     cmd = [
         "./target/release/storer_db_project",
         "--path", file_path,
@@ -98,50 +105,75 @@ def run_cargo_command(alloc, hash=False, restart=False):
         "--size", str(CHUNK_SIZE),
         "--seed", alloc['seed'],
     ]
+
+    # If the hash flag is True, add the "--hash" option to the command.
     if hash:
         cmd.append("--hash")
+
+    # If the restart flag is True, add the "--delete" option to the command. This will delete the existing database before creating a new one.
     if restart:
         cmd.append("--delete")
-    cargo_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generate_db")
-    result = subprocess.run(cmd, cwd=cargo_directory, capture_output=False, text=True)
-    if result.stderr:
-        bt.logging.error(f"Failed: {file_path}")
 
-def generate(config, allocations, no_prompt=False):
+    # Get the directory containing the Rust script.
+    cargo_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generate_db")
+
+    # Run the command in the cargo directory. The output of the command is not captured.
+    result = subprocess.run(cmd, cwd=cargo_directory, capture_output=False, text=True)
+
+    # If there is an error message in the output of the command, log an error message.
+    if result.stderr:
+        bt.logging.error(f"Failed to generate database: {file_path}")
+        
+def generate(
+        path: str,  # The path where the data and hashes DBs will be generated.
+        wallet: bt.wallet,  # The wallet object containing the name and hotkey.
+        allocations: typing.List[dict],  # List of allocation details.
+        no_prompt = False,  # If True, the function will not prompt for user confirmation. Default is False.
+        workers = 10,  # The number of concurrent workers to use for generation. Default is 10.
+        only_hash =False,  # If True, only hash will be generated. Default is False.
+        restart = False  # If True, the database will be restarted. Default is False.
+    ):
     """
-    Generate data and hashes DBs using multi-threading.
+    This function is responsible for generating data and hashes DBs. It uses multi-threading to speed up the process.
 
     Args:
-    - config (bt.config): Configuration object.
-    - allocations (list): List of allocation details.
+        path (str): This is the directory where the data and hashes DBs will be created.
+        wallet (bt.wallet): This is a wallet object that contains the name and hotkey.
+        allocations (typing.List[dict]): This is a list of dictionaries. Each dictionary contains details about an allocation.
+        no_prompt (bool): If this is set to True, the function will not ask for user confirmation before proceeding. By default, it's set to False.
+        workers (int): This is the number of concurrent workers that will be used for generation. By default, it's set to 10.
+        only_hash (bool): If this is set to True, only the hash will be generated. By default, it's set to False.
+        restart (bool): If this is set to True, the database will be restarted. By default, it's set to False.
+
+    Returns:
+        None
     """
-    # Confirm the allocation step.
-    allocation_dir = os.path.join(config.db_path, config.wallet.name, config.wallet.hotkey)
-    if not config.no_prompt and not no_prompt:
+    # First, we confirm the allocation step. This is done by calling the confirm_generation function.
+    # If the user does not confirm, the program will exit.
+    allocation_dir = os.path.join( path, wallet.name, wallet.hotkey_str)
+    if not no_prompt:
         if not confirm_generation(allocations, allocation_dir):
             exit()
-
-    # Check and potentially delete existing allocation directory.
-    # if os.path.exists(allocation_dir):
-    #     shutil.rmtree(allocation_dir)
       
-    # Create the directory for the allocation file.
+    # Next, we create the directory for the allocation file. If the directory already exists, this operation will do nothing.
     os.makedirs(allocation_dir, exist_ok=True)
 
-    # Write the allocations to a JSON file.
+    # Then, we write the allocations to a JSON file. This is done using the json.dump function.
     allocation_file = os.path.join(allocation_dir, "allocation.json")
     bt.logging.debug(f'Writing allocations to {allocation_file}')
     with open(allocation_file, 'w') as f:
         json.dump(allocations, f, indent=4)
 
-    # Run the generation
-    with ThreadPoolExecutor(max_workers=config.workers) as executor:
+    # Finally, we run the generation process. This is done using a ThreadPoolExecutor, which allows us to run multiple tasks concurrently.
+    # For each allocation, we submit two tasks to the executor: one for generating the hash, and one for generating the data.
+    # If only_hash is set to True, we skip the data generation task.
+    with ThreadPoolExecutor( max_workers = workers ) as executor:
         for alloc in allocations:
-            executor.submit(run_cargo_command, alloc, True, config.restart)
-            if not config.validator:
-                executor.submit(run_cargo_command, alloc, False, config.restart)
+            executor.submit( run_rust_generate, alloc, True, restart )
+            if not only_hash:
+                executor.submit( run_rust_generate, alloc, False, restart )
 
-def verify(config, allocations):
+def verify( allocations ):
     """
     Verify the integrity of the generated data and hashes.
 
@@ -195,95 +227,93 @@ def verify(config, allocations):
         data_conn.close()
         hashes_conn.close()
 
-def allocate(config):
+def allocate(
+        db_path: str,  # Path to the data database.
+        wallet: bt.wallet,  # Wallet object
+        metagraph: bt.metagraph,  # Metagraph object
+        threshold: float = 0.0001,  # Threshold for the allocation.
+    ) -> typing.List[dict]:
     """
-    Allocate space and generate allocation details based on the configuration.
+    This function calculates the allocation of space for each hotkey in the metagraph.
 
     Args:
-    - config (bt.config): Configuration object.
+        db_path (str): The path to the data database.
+        wallet (bt.wallet): The wallet object containing the name and hotkey.
+        metagraph (bt.metagraph): The metagraph object containing the hotkeys.
+        threshold (float): The threshold for the allocation. Default is 0.0001.
 
     Returns:
-    - list: List of allocation details.
+        list: A list of dictionaries. Each dictionary contains the allocation details for a hotkey.
     """
+    # Calculate the path to the wallet database.
+    wallet_db_path = os.path.join(db_path, wallet.name, wallet.hotkey_str)
 
-    # Expand user home directory in the path if it exists.
-    config.db_path = os.path.expanduser(config.db_path)
+    # Calculate the available space in the data database.
+    available_space = get_available_space( db_path )
 
-    # Initialize subtensor, wallet, and metagraph.
-    sub = bt.subtensor(config=config)
-    wallet = bt.wallet(config=config)
-    metagraph = sub.metagraph(netuid=config.netuid)
+    # Calculate the filling space based on the available space and the threshold.
+    filling_space = available_space * threshold
 
-    # Log the partitioning details.
-    bt.logging.info(f'Partitioning path:{config.db_path} at threshold: {config.threshold}')
-
-    # Create the directory if it doesn't exist.
-    os.makedirs(config.db_path, exist_ok=True)
-
-    # Calculate available and filling space.
-    available_space = get_available_space(config.db_path)
-    filling_space = available_space * config.threshold
-
-    # Log space details.
-    bt.logging.info(f'Available space: {human_readable_size(available_space)}')
-    bt.logging.info(f'Using: {human_readable_size(filling_space)} bytes')
-
-    # Calculate the number of databases.
-    num_dbs = metagraph.n.item()
-    bt.logging.info(f'Creating: {num_dbs} databases with under paths and sizes')
-
+    # Initialize an empty list to store the allocations.
     allocations = []
 
-    # Calculate allocation details for each database.
-    for i in range(num_dbs):
+    # Iterate over each hotkey in the metagraph.
+    for i, hotkey in enumerate( range(metagraph.hotkeys.item() ) ):
+        # Calculate the denominator for the allocation formula.
         denom = (metagraph.S + torch.ones_like(metagraph.S)).sum()
+
+        # Calculate the size of the database for the current hotkey.
         db_size = (((metagraph.S[i] + 1) / denom) * filling_space).item()
+
+        # Calculate the number of chunks for the current hotkey.
         n_chunks = int(db_size / CHUNK_SIZE) + 1
-        path = os.path.join(config.db_path, config.wallet.name, config.wallet.hotkey)
 
-        # Determine miner and validator keys based on the validator flag.
-        miner_key = metagraph.hotkeys[i] if config.validator else wallet.hotkey.ss58_address
-        validator_key = wallet.hotkey.ss58_address if config.validator else metagraph.hotkeys[i]
+        # Get the miner key from the wallet.
+        miner_key = wallet.hotkey.ss58_address
 
+        # Get the validator key from the metagraph.
+        validator_key = metagraph.hotkeys[i]
+
+        # Generate the seed for the current hotkey.
         seed = f"{miner_key}{validator_key}"
 
-        # Create the allocation dictionary.
-        alloc = {
-            "i": i,
-            "block": metagraph.block.item(),
-            "subtensor": sub.chain_endpoint,
-            "wallet_name": config.wallet.name,
-            "wallet_hotkey": config.wallet.hotkey,
-            "netuid": config.netuid,
-            "path": path,
-            "miner": miner_key,
-            "validator": validator_key,
-            "stake": int(metagraph.S[i].item()),
-            "size": int(db_size),
-            "h_size": human_readable_size(db_size),
-            "threshold": config.threshold,
-            "threshold_space": int(filling_space),
-            "h_threshold_space": human_readable_size(filling_space),
-            "threshold_percent": 100 * (db_size / filling_space),
-            "availble_space": int(available_space),
-            "h_available_space": human_readable_size(available_space),
-            "available_percent": 100 * (db_size / available_space),
-            "n_chunks": n_chunks,
-            "chunk_size": int(CHUNK_SIZE),
-            "seed": seed,
-        }
-        bt.logging.debug(f'partition_{i}: {json.dumps(alloc, indent=4)}')
-        allocations.append(alloc)
+        # Append the allocation details for the current hotkey to the allocations list.
+        allocations.append({
+            'path': db_path,
+            'n_chunks': n_chunks,
+            'size': db_size,
+            'seed': f"{wallet.hotkey.ss58_address}{hotkey}",
+            'miner': miner_key,
+            'validator': validator_key,
+        })
 
+    # Return the allocations list.
     return allocations 
 
 def main( config ):
     bt.logging( config = config )
     bt.logging.info( config  )
-    allocations = allocate( config )
-    generate( config, allocations )
+    sub = bt.subtensor( config = config )
+    wallet = bt.wallet( config = config )
+    metagraph = sub.metagraph( netuid = config.netuid )
+    db_path = os.path.expanduser( config.db_path )
+    allocations = allocate( 
+        db_path = db_path,
+        wallet = wallet,
+        metagraph = metagraph,
+        threshold = config.threshold,
+    )
+    generate(  
+        path = db_path,
+        wallet = wallet,
+        allocations = allocations,
+        no_prompt = config.no_prompt,
+        workers = config.workers, 
+        only_hash = config.validator, 
+        restart = config.restart,
+    )
     if not config.validator:
-        verify( config, allocations )
+        verify( allocations )
 
 if __name__ == "__main__":
     main( get_config() )

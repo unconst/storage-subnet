@@ -136,7 +136,17 @@ def main( config ):
             'miner': hotkey,
             'validator': wallet.hotkey.ss58_address
         })
-    allocate.generate( config, next_allocations, no_prompt = True )
+    
+    # Generate the hash allocations.
+    allocate.generate( 
+        path = config.db_path, # The path to the database.
+        wallet = wallet, # The wallet to determine the db location.
+        allocations = next_allocations,  # The allocations to generate.
+        no_prompt = True,  # If True, no prompt will be shown
+        workers = 10,  # The number of concurrent workers to use for generation. Default is 10.
+        only_hash = True, # The validator only generates hashes
+        restart = False # Dont restart the generation from empty files.
+    )
 
     # Connect to SQLite databases.
     bt.logging.info(f"Setting up data database connections")
@@ -204,7 +214,15 @@ def main( config ):
 
             # Reallocate the validator's chunks.
             bt.logging.debug(f"Prev allocations: {[ a['n_chunks'] for a in previous_allocations ]  }")
-            allocate.generate( config, next_allocations, no_prompt = True )
+            allocate.generate( 
+                path = config.db_path, # The path to the database.
+                wallet = wallet, # The wallet to determine the db location.
+                allocations = next_allocations,  # The allocations to generate.
+                no_prompt = True,  # If True, no prompt will be shown
+                workers = 10,  # The number of concurrent workers to use for generation. Default is 10.
+                only_hash = True, # The validator only generates hashes
+                restart = False # Dont restart the generation from empty files.
+            )
             bt.logging.info(f"Allocations: {[ allocate.human_readable_size( a['n_chunks'] * allocate.CHUNK_SIZE ) for a in next_allocations ] }")
 
             # Periodically update the weights on the Bittensor blockchain.
