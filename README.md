@@ -18,14 +18,54 @@
 This is a prototype incentive mechanism for storage where miners serve their harddrive space onto the network and prove its existence to validators. Miners are rewarded proportionally to the amount of space they can prove they have, and also allow encrypted data to be stored there by validators. The amount of space available to each validator is proportional to the amount of stake they have on the network.
 
 ---
+Installing
+
+Installs the python package and the rust binary.
+```bash
+python -m pip install -e # Installs the python package.
+cd neurons/generate_db; cargo build --release # Builds the rust binary.
+```
+
+---
 # Mining
 
-The miner must parition it hard drive before mining. This process generates random data which can used by validators to prove your available space. 
-To run the partitioning process run the following command.
+To run the miner
 ```bash
-cd partition/
-cd generate_db; cargo build --release
-python main.py 
+python neurons/miner.py
+    --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
+    --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
+    --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-db>  # This is where the partition will be created storing network data.
+    --logging.debug # Run in debug mode, alternatively --logging.trace for trace mode
+    --threshold <OPTIONAL: threshold i.e. 0.0001, default =  0.0001>  # The threshold for the partitioning algorithm which is the maximum amount of space the miner can use based on available.
+    --netuid <OPTIONAL: the subnet netuid, defualt = 1> # This is the netuid of the storage subnet you are serving on.
+    --subtensor.network <OPTIONAL: the bittensor chain endpoint, default = finney, local, test> # The chain endpoint to use to generate the partition.
+    --restart <OPTIONAL: restart the partitioning process from the beginning, otherwise restarts from the last created chunk. default = False> # If true, the partitioning process restarts instead using a checkpoint.
+    --steps_per_reallocate <OPTIONAL: the number of steps before reallocating, default = 1000> # The number of steps before reallocating.
+```
+
+---
+# Validating
+
+To run the validator
+```bash
+python neurons/validator.py
+    --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
+    --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
+    --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-db>  # This is where the partition will be created storing network data.
+    --logging.debug # Run in debug mode, alternatively --logging.trace for trace mode
+    --netuid <OPTIONAL: the subnet netuid, defualt = 1> # This is the netuid of the storage subnet you are serving on.
+    --subtensor.network <OPTIONAL: the bittensor chain endpoint, default = finney, local, test> # The chain endpoint to use to generate the partition.
+```
+
+---
+# Allocating 
+
+Allocates space on your machine based on the amount of stake other neurons have on the network. The allocation process is done by partitioning the space on your machine into chunks and assigning each chunk to a validator. The amount of space allocated to each validator is proportional to the amount of stake they have on the network. The allocation process is done by running the following command.
+
+```bash
+cd neurons/ # Navigate to the neurons directory.
+cd generate_db; cargo build --release # Builds the rust binary.
+python allocate.py # Runs the partitioning process.
     --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-db>  # This is where the partition will be created storing network data.
     --netuid <OPTIONAL: the subnet netuid, defualt = 1> # This is the netuid of the storage subnet you are serving on.
     --threshold <OPTIONAL: threshold i.e. 0.0001, default =  0.0001>  # The threshold for the partitioning algorithm which is the maximum amount of space the miner can use based on available.
@@ -54,83 +94,14 @@ cat ~/{db_path}/{wallet_name}{hotkey_name}/partition.json
 # Example output.
 >> 
     {
-        "i": 0, # The index of the allocation
-        "block": 1737, # The block at which the allocation was created.
-        "netuid": 1, # The netuid of the subnet.
-        "subtensor": "ws://127.0.0.1:9946", # The chain endpoint.
-        "wallet_name": "my_wallet", # The name of the wallet.
-        "wallet_hotkey": "my_hotkey", # The hotkey of the wallet.
         "path": "/Users/user/db_path/wallet_name/hotkey_name", # The path of the partition.
         "owner": "5CSkJdaN1HxDHsVev1BfzDkknGYg8Hxnsokio26m4GCPNcHQ", # The owner ss58 address of the partition.
         "validator": "5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1", # The validator ss58 address of the partition.
-        "stake": 0, # The stake of the validator.
         "size": 17503128, # The size of the partition (bytest)
-        "h_size": "16.69 MB", # The size of the partition (human readable)
-        "threshold": 0.0001, # The threshold of the partition (i.e. the maximum amount of space the miner can use based on available)
-        "threshold_space": 35006255, # The threshold of the partition (i.e. the maximum amount of space the miner can use based on available)
-        "h_threshold_space": "33.38 MB", # The human readable threshold of the partition (i.e. the maximum amount of space the miner can use based on available)
-        "threshold_percent": 50.000001279771276, # The percent of the threshold of the partition (i.e. the maximum amount of space the miner can use based on available)
-        "availble_space": 350062551040, # The total available space on the partition.
-        "h_available_space": "326.02 GB", # The total available space on the partition (human readable)
-        "available_percent": 0.005000000127977128, # The proportion of spaces used based on available.
         "n_chunks": 350, # The number of chunks in the partition.
-        "chunk_size": 100000, # The size of each chunk.
         "seed": "5CSkJdaN1HxDHsVev1BfzDkknGYg8Hxnsokio26m4GCPNcHQ5EnjDGNqqWnuL2HCAdxeEtN2oqtXZw6BMBe936Kfy2PFz1J1" # The DB seed used to generate the partition.
     },
 ```
-
---- 
-### Running the Miner
-
-To run a miner follow the instruction from above to generate your parition. Once your parition is verified and created your miner can serve it onto the network. To run the miner run the following command.
-```bash
-python neurons/miner.py
-    --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
-    --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
-    --db_path <OPTIONAL: path where you want the DB files stored, default = ~/bittensor-db>  # This is where the partition will be created storing network data.
-
----
-
-# Installation
-This repository requires python3.8 or higher. To install, simply clone this repository and install the requirements.
-```bash
-git clone https://github.com/opentensor/bittensor-subnet-template.git
-cd bittensor-subnet-template
-python -m pip install -r requirements.txt
-python -m pip install -e .
-```
-
-</div>
-
----
-
-Once you have installed this repo and attained your subnet via the instructions in the nested docs (staging, testing, or main) you can run the miner and validator with the following commands.
-```bash
-# To run the miner
-python -m neurons/miner.py 
-    --netuid <your netuid>  # Must be attained by following the instructions in the docs/running_on_*.md files
-    --subtensor.chain_endpoint <your chain url>  # Must be attained by following the instructions in the docs/running_on_*.md files
-    --wallet.name <your miner wallet> # Must be created using the bittensor-cli
-    --wallet.hotkey <your validator hotkey> # Must be created using the bittensor-cli
-    --logging.debug # Run in debug mode, alternatively --logging.trace for trace mode
-
-# To run the validator
-python -m neurons/validator.py 
-    --netuid <your netuid> # Must be attained by following the instructions in the docs/running_on_*.md files
-    --subtensor.chain_endpoint <your chain url> # Must be attained by following the instructions in the docs/running_on_*.md files
-    --wallet.name <your validator wallet>  # Must be created using the bittensor-cli
-    --wallet.hotkey <your validator hotkey> # Must be created using the bittensor-cli
-    --logging.debug # Run in debug mode, alternatively --logging.trace for trace mode
-```
-
-</div>
-
----
-
-# Updating the template
-The code contains detailed documentation on how to update the template. Please read the documentation in each of the files to understand how to update the template. There are multiple TODOs in each of the files which you should read and update.
-
-</div>
 
 ---
 
