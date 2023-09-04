@@ -4,22 +4,81 @@
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background-color: #f0f0f0;
+  background-color: #ffffff; 
+  font-family: 'Arial, sans-serif';
+  color: #000000;
 }
 
-input {
-  margin: 10px;
+.logo {
+  position: absolute;
+  top: 23px;
+  left: 23px;
+  width: 50px; /* Adjust width as necessary */
+  height: auto;
+}
+
+.container {
+  background-color: #fafafa; /* Changed to slightly off-white */
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+
+h1 {
+  margin-bottom: 20px;
+  font-size: 2em;
+  color: #000000;
+  font-family: 'Georgia', serif;
+  text-align: center;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 300px;
+  margin-bottom: 20px;
+}
+
+.input-group input {
+  width: 100%;
+  margin: 10px 0;
   padding: 10px;
   font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
 }
 
-button {
-  margin: 10px;
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+.button-group button {
   padding: 10px 20px;
   font-size: 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
 }
 
-div {
+.button-group button:hover {
+  background-color: #ddd;
+}
+
+.response {
   margin: 10px;
   font-size: 16px;
+  background-color: #fff;
+  padding: 10px;
+  border-radius: 4px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
