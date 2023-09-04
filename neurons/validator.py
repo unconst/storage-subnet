@@ -46,6 +46,7 @@ def get_config():
     parser = argparse.ArgumentParser()
     # TODO(developer): Adds your custom miner arguments to the parser.
     parser.add_argument('--db_root_path', default=os.path.expanduser('~/bittensor-db'), help='Validator hashes')
+    parser.add_argument('--no_bridge', action='store_true', help='Run without bridging to the network.')
     # Adds override arguments for network and netuid.
     parser.add_argument( '--netuid', type = int, default = 1, help = "The chain subnet uid." )
     # Adds subtensor specific arguments i.e. --subtensor.chain_endpoint ... --subtensor.network ...
