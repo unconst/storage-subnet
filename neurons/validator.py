@@ -45,7 +45,7 @@ def get_config():
 
     parser = argparse.ArgumentParser()
     # TODO(developer): Adds your custom miner arguments to the parser.
-    parser.add_argument('--db_path', default=os.path.expanduser('~/bittensor-db'), help='Validator hashes')
+    parser.add_argument('--db_root_path', default=os.path.expanduser('~/bittensor-db'), help='Validator hashes')
     # Adds override arguments for network and netuid.
     parser.add_argument( '--netuid', type = int, default = 1, help = "The chain subnet uid." )
     # Adds subtensor specific arguments i.e. --subtensor.chain_endpoint ... --subtensor.network ...
@@ -77,7 +77,6 @@ def get_config():
 
 def main( config ):
     # Set up logging with the provided configuration and directory.
-    config.db_path = os.path.expanduser(config.db_path)
     bt.logging(config=config, logging_dir=config.full_path)
     bt.logging.info(f"Running validator for subnet: {config.netuid} on network: {config.subtensor.chain_endpoint} with config:")
     # Log the configuration for reference.
@@ -122,39 +121,31 @@ def main( config ):
     next_allocations = []
     verified_allocations = []
     for hotkey in tqdm( metagraph.hotkeys ):
+        db_path = os.path.expanduser(f"{config.db_root_path}/{config.wallet.name}/{config.wallet.hotkey}/DB-{hotkey}-{wallet.hotkey.ss58_address}")
         next_allocations.append({
-            'path': os.path.expanduser(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}"),
+            'path': db_path,
             'n_chunks': 100,
             'seed': f"{hotkey}{wallet.hotkey.ss58_address}",
             'miner': hotkey,
             'validator': wallet.hotkey.ss58_address,
+            'hash': True,
         })
         verified_allocations.append( {
-            'path': os.path.expanduser(f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}"),
+            'path': db_path,
             'n_chunks': 0,
             'seed': f"{hotkey}{wallet.hotkey.ss58_address}",
             'miner': hotkey,
-            'validator': wallet.hotkey.ss58_address
+            'validator': wallet.hotkey.ss58_address,
+            'hash': True,
         })
     
     # Generate the hash allocations.
     allocate.generate( 
-        path = config.db_path, # The path to the database.
-        wallet = wallet, # The wallet to determine the db location.
         allocations = next_allocations,  # The allocations to generate.
         no_prompt = True,  # If True, no prompt will be shown
         workers = 10,  # The number of concurrent workers to use for generation. Default is 10.
-        only_hash = True, # The validator only generates hashes
         restart = False # Dont restart the generation from empty files.
     )
-
-    # Connect to SQLite databases.
-    bt.logging.info(f"Setting up data database connections")
-    dbpath_prefix = os.path.expanduser( f"{config.db_path}/{config.wallet.name}/{config.wallet.hotkey}/hashes" )
-    # data_base_connections = {}
-    # for hotkey in tqdm( metagraph.hotkeys ):
-    #     bt.logging.info(f"Connecting to database under path: {dbpath_prefix}-{hotkey}-{wallet.hotkey.ss58_address}")
-    #     data_base_connections[hotkey] = sqlite3.connect(f"{dbpath_prefix}-{hotkey}-{wallet.hotkey.ss58_address}")
 
     # Step 7: The Main Validation Loop
     bt.logging.info("Starting validator loop.")
@@ -163,29 +154,27 @@ def main( config ):
         try:
             # Iterate over all miners on the network and validate them.
             previous_allocations = copy.deepcopy( next_allocations )
-            for i, hotkey in tqdm( enumerate( metagraph.hotkeys ) ):
-
-                # Get the current estimated allocation for the miner.
-                alloc = next_allocations[i]
-                bt.logging.debug(f"Validating miner: {hotkey} with allocation: {alloc}")
+            for i, alloc in tqdm( enumerate( next_allocations ) ):
+                # Dont self validate.
+                if alloc['miner'] == wallet.hotkey.ss58_address: continue
+                print(f"Validating miner: {alloc}")
 
                 # Select a random chunk to validate.
                 chunk_i = str( random.randint( 1, alloc['n_chunks'] ) )
                 bt.logging.debug(f"Validating chunk: {chunk_i}")
 
                 # Get the hash of the data to validate from the database.
-                db = sqlite3.connect(f"{dbpath_prefix}-{hotkey}-{wallet.hotkey.ss58_address}")
+                db = sqlite3.connect(alloc['path'])
                 try:
-                    validation_hash = db.cursor().execute(f"SELECT data FROM DB{alloc['seed']} WHERE id=?", (chunk_i,)).fetchone()[0]
+                    validation_hash = db.cursor().execute(f"SELECT hash FROM DB{alloc['seed']} WHERE id=?", (chunk_i,)).fetchone()[0]
                 except:
-                    bt.logging.error(f"Failed to get validation hash for chunk: {chunk_i}")
+                    bt.logging.error(f"Failed to get validation hash for chunk: {chunk_i} from db: {alloc['path']}")
                     continue
                 bt.logging.debug(f"Validation hash: {validation_hash}")
                 db.close()
 
                 # Query the miner for the data.
                 miner_data = dendrite.query( metagraph.axons[i], storage.protocol.Retrieve( key = chunk_i ), deserialize = True )
-                bt.logging.trace(f"Miner data: {miner_data}")
 
                 if miner_data == None:
                     # The miner could not respond with the data.
@@ -197,6 +186,7 @@ def main( config ):
                 elif miner_data != None:
                     # The miner was able to respond with the data, but we need to verify it.
                     computed_hash = hashlib.sha256( miner_data.encode() ).hexdigest()
+                    bt.logging.debug(f"   Computed hash: {computed_hash}, Validation hash: {validation_hash} ")
 
                     # Check if the miner has provided the correct response by doubling the dummy input.
                     if computed_hash == validation_hash:
@@ -215,12 +205,8 @@ def main( config ):
             # Reallocate the validator's chunks.
             bt.logging.debug(f"Prev allocations: {[ a['n_chunks'] for a in previous_allocations ]  }")
             allocate.generate( 
-                path = config.db_path, # The path to the database.
-                wallet = wallet, # The wallet to determine the db location.
                 allocations = next_allocations,  # The allocations to generate.
                 no_prompt = True,  # If True, no prompt will be shown
-                workers = 10,  # The number of concurrent workers to use for generation. Default is 10.
-                only_hash = True, # The validator only generates hashes
                 restart = False # Dont restart the generation from empty files.
             )
             bt.logging.info(f"Allocations: {[ allocate.human_readable_size( a['n_chunks'] * allocate.CHUNK_SIZE ) for a in next_allocations ] }")

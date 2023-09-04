@@ -95,6 +95,7 @@ fn main() {
         "CREATE TABLE IF NOT EXISTS DB{} (
             id INTEGER PRIMARY KEY, 
             data TEXT NOT NULL, 
+            hash TEXT NOT NULL,
             rng_state BLOB NOT NULL
         )", seed_value);
     log::info!("create_table_sql: {}", create_table_sql);
@@ -128,11 +129,11 @@ fn main() {
 
     if let Some(row) = rows.next().expect("Failed to read row") {
         start_index = row.get::<_, i64>(0).expect("Failed to get id") as usize + 1;  // +1 because we want to start from the next index
-        log::info!("Found latest id: {}", start_index - 1);  // subtracting 1 to get the actual latest id
+        log::info!("Found latest id: {}", start_index - 1 );  // subtracting 1 to get the actual latest id
 
         let seed_as_vec: Vec<u8> = row.get(1).expect("Failed to get rng_state");
         current_seed.copy_from_slice(&seed_as_vec);
-        log::info!("Retrieved RNG state for id: {}", start_index - 1);
+        log::info!("Retrieved RNG state for id: {} seed: {:?}", start_index - 1 , current_seed);
     } else {
         log::warn!("No RNG state found in the database. Using default seed.");
     }
@@ -140,47 +141,57 @@ fn main() {
     // Delete excess rows
     if start_index > num_chunks {
         let delete_rows = format!(
-            "DELETE FROM DB{} WHERE id > ?", 
+            "DELETE FROM DB{} WHERE id >= ?", 
             seed_value
         );
         log::info!("Deleting excess rows up to id: {}", num_chunks);
         conn.execute(&delete_rows, params![num_chunks as i64]).expect("Failed to delete excess rows");
     } else {
-        // Add the rows that are missing
-
-        // Generate the hash of the seed
-        let mut current_seed = seed_array;
-
         // Generate and store chunks
         pb.inc(start_index as u64);
         for i in start_index..num_chunks {
             let mut prng = StdRng::from_seed(current_seed);
             let chunk_data = generate_string_chunk(&mut prng, chunk_size);
 
-            // Hash the current data.
+            // Build chained seed
             let hash_of_data = hash_data(&chunk_data);
             current_seed = combine_seeds(current_seed, hash_of_data);
 
-            // Switch to hashes if set.
-            let data_to_store = if hash {
-                let mut hasher = Sha256::new();
-                hasher.update(chunk_data.as_bytes());
-                format!("{:x}", hasher.finalize())
-            } else {
-                chunk_data
-            };
-            
+            // Hash the data for verification
+            let mut hasher = Sha256::new();
+            hasher.update(chunk_data.as_bytes());
+            let hash_bytes = hasher.finalize();
+            let hash_hex = hex::encode(&hash_bytes);
+
+            // Store the id, data, hash, and rng_state
             let insert_sql = format!(
-                "INSERT INTO DB{} (id, data, rng_state) VALUES (?, ?, ?)", 
+                "INSERT INTO DB{} (id, data, hash, rng_state) VALUES (?, ?, ?, ?)", 
                 seed_value
             );
-            conn.execute(
-                &insert_sql, 
-                params![i as i64, data_to_store, current_seed.to_vec()]
-            ).expect("Failed to insert into database");
+
+            // Optionally only store the data hash
+            log::info!("Set in DB id: {} seed: {:?}", i, current_seed );
+
+            if hash {
+                // Store only the hash.
+                conn.execute(
+                    &insert_sql, 
+                    params![i as i64, "", hash_hex, current_seed.to_vec()]
+                ).expect("Failed to insert into database");
+            } else {
+                // Store all the data.
+                conn.execute(
+                    &insert_sql, 
+                    params![i as i64, chunk_data, hash_hex, current_seed.to_vec()]
+                ).expect("Failed to insert into database");
+            }
             pb.inc(1);
+
         };
         pb.finish();
+
+        // Get current state
+        log::info!("Finish");
 
         // Wait for the progress bars to finish
         _progress_thread_handle.join().unwrap();

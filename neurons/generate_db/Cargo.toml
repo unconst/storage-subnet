@@ -14,5 +14,6 @@ sha2 = "0.9"
 rayon = "1.5"
 lazy_static = "1.4"
 env_logger = "0.9"
+hex = "0.4.3"
 
 
