@@ -258,7 +258,7 @@ def allocate(
     allocations = []
 
     # Iterate over each hotkey in the metagraph.
-    for i, hotkey in enumerate( range(metagraph.hotkeys.item() ) ):
+    for i, hotkey in enumerate( metagraph.hotkeys ):
         # Calculate the denominator for the allocation formula.
         denom = (metagraph.S + torch.ones_like(metagraph.S)).sum()
 
