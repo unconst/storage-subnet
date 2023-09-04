@@ -181,8 +181,12 @@ def main( config ):
         bt.logging.info(f'Got request to store data: {synapse.data} under key: {synapse.key}')
 
         # Insert data into SQLite databases
-        cursor.execute("INSERT OR REPLACE INTO DB (id, data) VALUES (?, ?)", (synapse.key, synapse.data))
-        db.commit()
+        try:
+            update_request = f"UPDATE DB{wallet.hotkey.ss58_address}{synapse.dendrite.hotkey} SET data = ? WHERE id = ?"
+            cursor.execute(update_request, (synapse.data, synapse.key))
+            db.commit()
+        except Exception as e:
+            bt.logging.error(f"Error updating database: {e}")
 
         # Return
         bt.logging.success(f"Stored data for key {synapse.key}!")

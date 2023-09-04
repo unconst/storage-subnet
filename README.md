@@ -103,6 +103,21 @@ cat ~/{db_path}/{wallet_name}{hotkey_name}/partition.json
     },
 ```
 
+
+---
+# Frontend
+
+You can bridge access to your validator via a frontend, this allows you to set values and retrieve them from the miners. To run the frontend, run the following command.
+```bash
+cd frontend # Navigate to the frontend directory.
+npm install # Install the dependencies.
+python bridge.py # Runs the bridge using the same key as your validator to get network access.
+    --wallet.name <OPTIONAL: your miner wallet, default = default> # Must be created using the bittensor-cli, btcli wallet new_coldkey
+    --wallet.hotkey <OPTIONAL: your validator hotkey, defautl = default> # Must be created using the bittensor-cli btcli wallet new_hotkey
+yarn start # Starts the frontend server.
+```
+Then navigate to the localhost address in your browser http://localhost:3000/.
+
 ---
 
 ## License
