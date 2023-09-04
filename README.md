@@ -18,7 +18,7 @@
 This is a prototype incentive mechanism for storage where miners serve their harddrive space onto the network and prove its existence to validators. Miners are rewarded proportionally to the amount of space they can prove they have, and also allow encrypted data to be stored there by validators. The amount of space available to each validator is proportional to the amount of stake they have on the network.
 
 ---
-Installing
+# Installing
 
 Installs the python package and the rust binary.
 ```bash
